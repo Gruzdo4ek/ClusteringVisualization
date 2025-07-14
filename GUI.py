@@ -233,6 +233,7 @@ class App:
                 self.status_label.config(text=message, style='Success.TLabel')
                 self.update_features_checkboxes()
                 self.update_data_table()
+
             else:
                 self.status_label.config(text=message, style='Error.TLabel')
                 messagebox.showerror("Ошибка",  "Формат файла должен быть txt")
@@ -294,6 +295,10 @@ class App:
                 metrics.update(ref_metrics)
 
             self.show_metrics(metrics)
+            self.cluster_labels = labels  # сохраняем метки кластеров
+            self.data = data  # сохраняем данные
+            self.metrics_result = metrics  # сохраняем метрики для экспорта
+
 
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка при кластеризации: {str(e)}")
@@ -371,19 +376,45 @@ class App:
         messagebox.showinfo("Успех", "Эталонные данные удалены")
 
     def update_data_table(self):
-        # Очищаем предыдущие данные
-        self.data_table.delete(*self.data_table.get_children())
+        """Обновляет таблицу с загруженными данными"""
+        try:
+            # Очищаем предыдущие данные
+            self.data_table.delete(*self.data_table.get_children())
 
-        # Настраиваем колонки
-        columns = [f"Признак {i + 1}" for i in range(self.data_processor.num_features)]
-        self.data_table["columns"] = columns
-        for col in columns:
-            self.data_table.heading(col, text=col)
-            self.data_table.column(col, width=80)  # Уменьшил ширину колонок
+            # Проверяем наличие данных
+            if not hasattr(self.data_processor, 'data') or self.data_processor.data is None:
+                return
 
-        # Заполняем данными
-        for row in self.data_processor.data:
-            self.data_table.insert("", tk.END, values=row)
+            # Проверяем, что данные не пустые
+            if len(self.data_processor.data) == 0:
+                return
+
+            # Получаем количество признаков из самих данных, если num_features не установлено
+            num_features = getattr(self.data_processor, 'num_features',
+                                   len(self.data_processor.data[0]) if len(self.data_processor.data) > 0 else 0)
+
+            # Настраиваем колонки
+            columns = [f"Признак {i + 1}" for i in range(num_features)]
+            self.data_table["columns"] = columns
+
+            # Конфигурируем заголовки колонок
+            for col in columns:
+                self.data_table.heading(col, text=col)
+                self.data_table.column(col, width=80, anchor='center')  # Центрируем данные
+
+            # Заполняем таблицу данными с проверкой каждой строки
+            for row in self.data_processor.data:
+                # Проверяем, что строка имеет правильное количество элементов
+                if len(row) != num_features:
+                    print(f"Предупреждение: строка {row} имеет неверное количество признаков")
+                    continue
+
+                self.data_table.insert("", tk.END, values=row)
+
+        except Exception as e:
+            print(f"Ошибка при обновлении таблицы данных: {str(e)}")
+            # Можно добавить всплывающее окно с ошибкой, если нужно
+            # messagebox.showerror("Ошибка", f"Не удалось обновить таблицу: {str(e)}")
 
     def update_ref_table(self):
         # Очищаем предыдущие данные
@@ -413,15 +444,34 @@ class App:
             messagebox.showinfo("Успех", "Результаты сохранены в базу данных")
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось сохранить: {str(e)}")
+
         filepath = filedialog.asksaveasfilename(
             title="Экспорт результатов",
             defaultextension=".txt",
             filetypes=[("Текстовые файлы", "*.txt"), ("Все файлы", "*.*")]
         )
+
         if filepath:
             try:
-                with open(filepath, 'w') as f:
-                    f.write(self.metrics_text.get(1.0, tk.END))
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    # === Метрики ===
+                    f.write("=== Метрики кластеризации ===\n")
+                    if hasattr(self, 'metrics_result'):
+                        for name, value in self.metrics_result.items():
+                            f.write(f"{name}: {value}\n")
+                    else:
+                        f.write("Метрики отсутствуют.\n")
+
+                    # === Данные + метки ===
+                    f.write("\n=== Объекты и метки кластеров ===\n")
+                    if hasattr(self, 'data') and hasattr(self, 'cluster_labels'):
+                        import pandas as pd
+                        df = pd.DataFrame(self.data)
+                        df['cluster'] = self.cluster_labels
+                        df.to_csv(f, sep='\t', index=False, header=False)
+                    else:
+                        f.write("Нет доступных данных или меток для экспорта.\n")
+
                 messagebox.showinfo("Успех", "Результаты успешно экспортированы")
             except Exception as e:
                 messagebox.showerror("Ошибка", f"Не удалось экспортировать: {str(e)}")
