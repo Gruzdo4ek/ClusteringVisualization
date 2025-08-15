@@ -10,12 +10,6 @@ class MetricsCalculator:
         }
         return metrics
 
-    def calculate_comparative(self, true_labels, pred_labels):
-        return {
-            "Adjusted Rand Index": adjusted_rand_score(true_labels, pred_labels),
-            "V-measure": v_measure_score(true_labels, pred_labels)
-        }
-
     def calculate_inertia(self, data, labels):
         centers = {}
         for label in np.unique(labels):
